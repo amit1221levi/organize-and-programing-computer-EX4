@@ -3,4 +3,4 @@ project(AtamWet4 C)
 
 set(CMAKE_C_STANDARD 99)
 
-add_library(AtamWet4 library.c)
+add_library(AtamWet4 read_elf.h)
