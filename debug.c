@@ -36,31 +36,23 @@ pid_t runTarget(char *const argv[]);
 long putBreakpointInFunc(pid_t childPid,unsigned long funcAddress);
 void removeBreakpoint( unsigned long funcAddr,pid_t childPid, unsigned long Data);
 
-//============================getArgs================================================================================
+//============================AtStackAddress================================================================================
 /*
-void getArgs( char **funcName,int arg, char *argv[], char **exeFileName)
+bool AtStackAddress(pid_t childPid, unsigned long stackAddress)
 {
-    if (arg != 3)
+    struct user_regs_struct regs;
+    ptrace(PTRACE_GETREGS, childPid, NULL, &regs);
+    if (regs.rsp == stackAddress)
     {
-        printf("Usage: %s <function name> <executable file name>\n", argv[0]);
-        exit(1);
+        return true;
     }
-    *funcName = argv[1];
-    *exeFileName = argv[2];
+    return false;
 }
  */
-void getArgs(char **funcName, int argc, char *argv[], char **exeFileName) {
-    if (argc < 3) {
-        fprintf(stderr, "Error: Insufficient arguments provided.\n");
-        fprintf(stderr, "Usage: %s <function name> <executable file name>\n", argv[0]);
-        exit(EXIT_FAILURE);
-    } else if (argc > 3) {
-        fprintf(stderr, "Error: Too many arguments provided.\n");
-        fprintf(stderr, "Usage: %s <function name> <executable file name>\n", argv[0]);
-        exit(EXIT_FAILURE);
-    }
-    *funcName = argv[1];
-    *exeFileName = argv[2];
+bool AtStackAddress(pid_t childPid, unsigned long stackAddress) {
+    struct user_regs_struct regs;
+    ptrace(PTRACE_GETREGS, childPid, NULL, &regs);
+    return regs.rsp == stackAddress;
 }
 
 
@@ -134,59 +126,6 @@ long putBreakpointInFunc(pid_t childPid,unsigned long funcAddress)
     return data;
 }
  */
-
-
-//============================removeBreakpoint================================================================================
-/*
-void removeBreakpoint( unsigned long funcAddr,pid_t childPid, unsigned long Data)
-{
-    ptrace(PTRACE_POKETEXT, childPid, (void *)funcAddr, (void *)Data);
-    struct user_regs_struct regs;
-    ptrace(PTRACE_GETREGS, childPid, NULL, &regs);
-    regs.rip -= 1;
-    ptrace(PTRACE_SETREGS, childPid, 0, &regs);
-}
- */
-long putBreakpointInFunc(pid_t childPid, unsigned long funcAddress) {
-    long orig_data;
-    long data = ptrace(PTRACE_PEEKDATA, childPid, funcAddress, NULL);
-    orig_data = data;
-    long int_3 = data | 0xCC;
-    ptrace(PTRACE_POKEDATA, childPid, funcAddress, int_3);
-    return orig_data;
-}
-
-//============================AtStackAddress================================================================================
-/*
-bool AtStackAddress(pid_t childPid, unsigned long stackAddress)
-{
-    struct user_regs_struct regs;
-    ptrace(PTRACE_GETREGS, childPid, NULL, &regs);
-    if (regs.rsp == stackAddress)
-    {
-        return true;
-    }
-    return false;
-}
- */
-bool AtStackAddress(pid_t childPid, unsigned long stackAddress) {
-    struct user_regs_struct regs;
-    ptrace(PTRACE_GETREGS, childPid, NULL, &regs);
-    return regs.rsp == stackAddress;
-}
-
-
-
-//============================getRetAddress================================================================================
-/*
-void getRetAddress( unsigned long *retAddress,pid_t childPid, struct userRegsStruct *regs)
-{
-    *retAddress = ptrace(PTRACE_PEEKTEXT, childPid, regs->rsp, NULL);
-}
- */
-void getRetAddress(unsigned long *retAddress, pid_t childPid, struct user_regs_struct *regs) {
-    *retAddress = ptrace(PTRACE_PEEKDATA, childPid, regs->rsp, NULL);
-}
 
 //============================runFuncCounter================================================================================
 /*
@@ -323,6 +262,68 @@ void runFuncCounter(unsigned long funcAddr, bool Relocatable, pid_t childPid) {
 }
 
 
+
+
+//============================removeBreakpoint================================================================================
+/*
+void removeBreakpoint( unsigned long funcAddr,pid_t childPid, unsigned long Data)
+{
+    ptrace(PTRACE_POKETEXT, childPid, (void *)funcAddr, (void *)Data);
+    struct user_regs_struct regs;
+    ptrace(PTRACE_GETREGS, childPid, NULL, &regs);
+    regs.rip -= 1;
+    ptrace(PTRACE_SETREGS, childPid, 0, &regs);
+}
+ */
+long putBreakpointInFunc(pid_t childPid, unsigned long funcAddress) {
+    long orig_data;
+    long data = ptrace(PTRACE_PEEKDATA, childPid, funcAddress, NULL);
+    orig_data = data;
+    long int_3 = data | 0xCC;
+    ptrace(PTRACE_POKEDATA, childPid, funcAddress, int_3);
+    return orig_data;
+}
+
+
+
+
+//============================getArgs================================================================================
+/*
+void getArgs( char **funcName,int arg, char *argv[], char **exeFileName)
+{
+    if (arg != 3)
+    {
+        printf("Usage: %s <function name> <executable file name>\n", argv[0]);
+        exit(1);
+    }
+    *funcName = argv[1];
+    *exeFileName = argv[2];
+}
+ */
+void getArgs(char **funcName, int argc, char *argv[], char **exeFileName) {
+    if (argc < 3) {
+        fprintf(stderr, "Error: Insufficient arguments provided.\n");
+        fprintf(stderr, "Usage: %s <function name> <executable file name>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    } else if (argc > 3) {
+        fprintf(stderr, "Error: Too many arguments provided.\n");
+        fprintf(stderr, "Usage: %s <function name> <executable file name>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+    *funcName = argv[1];
+    *exeFileName = argv[2];
+}
+
+//============================getRetAddress================================================================================
+/*
+void getRetAddress( unsigned long *retAddress,pid_t childPid, struct userRegsStruct *regs)
+{
+    *retAddress = ptrace(PTRACE_PEEKTEXT, childPid, regs->rsp, NULL);
+}
+ */
+void getRetAddress(unsigned long *retAddress, pid_t childPid, struct user_regs_struct *regs) {
+    *retAddress = ptrace(PTRACE_PEEKDATA, childPid, regs->rsp, NULL);
+}
 
 //============================main================================================================================
 /*
