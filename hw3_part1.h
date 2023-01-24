@@ -41,6 +41,72 @@
  * return value		- The address which the symbol_name will be loaded to, if the symbol was found and is global.
  */
 
+//////////////////////////// HIS CODE ////////////////////////////////////////////////////
+
+int getIndex(Elf64_Shdr *section_header, Elf64_Ehdr *elf_header, char *section_header_string_table, char *section_name){
+    for (int i = 0; i < elf_header->e_shnum; i++){
+        if (strcmp(section_header_string_table + section_header[i].sh_name, section_name) == 0){
+            return i;
+        }
+    }
+    return -1;
+}
+
+uint32_t getIndexOfSymInDynamic(Elf64_Shdr *dynsym_table_header, char *dynstr_table, char *dynsym_table, char *symbol_input){
+    int i = 0;
+    for (; i <  dynsym_table_header->sh_size / dynsym_table_header->sh_entsize; ++i){
+        Elf64_Sym *symbol = (Elf64_Sym *)(dynsym_table + i * dynsym_table_header->sh_entsize);
+        char *symbol_name = dynstr_table + symbol->st_name;
+        if (strcmp(symbol_name, symbol_input) == 0){
+            return i;
+        }
+    }
+    return -1;
+}
+
+
+
+unsigned long getRelAddress(FILE *file, Elf64_Shdr *section_header, Elf64_Ehdr *elf_header, char *section_header_string_table, char *symbol_name){
+    unsigned long got_entry_addr = 0;
+    int rel_index = getIndex(section_header, elf_header, section_header_string_table, ".rela.plt");
+    Elf64_Shdr rel_header = section_header[rel_index];
+    int dynsym_index = getIndex(section_header, elf_header, section_header_string_table, ".dynsym");
+    Elf64_Shdr dynsym_header = section_header[dynsym_index];
+    int dynstr_index = getIndex(section_header, elf_header, section_header_string_table, ".dynstr");
+    Elf64_Shdr dynstr_header = section_header[dynstr_index];
+
+    char *dynstr_table = (char *)malloc(dynstr_header.sh_size);
+    fseek(file, dynstr_header.sh_offset, SEEK_SET);
+    fread(dynstr_table, dynstr_header.sh_size, 1, file);
+
+    Elf64_Shdr *dynsym_table = (Elf64_Shdr *)malloc(dynsym_header.sh_size);
+    fseek(file, dynsym_header.sh_offset, SEEK_SET);
+    fread(dynsym_table, dynsym_header.sh_size, 1, file);
+
+    Elf64_Rela *rel_table = (Elf64_Rela *)malloc(rel_header.sh_size);
+    fseek(file, rel_header.sh_offset, SEEK_SET);
+    fread(rel_table, rel_header.sh_size, 1, file);
+
+    int index_of_sym = getIndexOfSymInDynamic(&dynsym_header, dynstr_table, (char *)dynsym_table, symbol_name);
+
+    for (int i = 0; i < rel_header.sh_size / rel_header.sh_entsize; ++i){
+        Elf64_Rela rel = rel_table[i];
+        if (ELF64_R_SYM(rel.r_info) == index_of_sym){
+            got_entry_addr = rel.r_offset;
+            free(dynstr_table);
+            free(dynsym_table);
+            free(rel_table);
+            return got_entry_addr;
+        }
+    }
+    free(dynstr_table);
+    free(dynsym_table);
+    free(rel_table);
+    return got_entry_addr;
+}
+
+//////////////////////////////////////////////HIS CODE ///////////////////////////////////////////////////////////
+
 
 Elf64_Sym * find_helper (char* to_find, Elf64_Sym * symtable, int num, FILE* file,char* str_tab,int* error_val)
 {
@@ -55,6 +121,7 @@ Elf64_Sym * find_helper (char* to_find, Elf64_Sym * symtable, int num, FILE* fil
             if (symtable[i].st_shndx == SHN_UNDEF)
             {
                 *error_val = -4;
+
             }
 
 
@@ -153,6 +220,14 @@ unsigned long find_symbol(char* symbol_name, char* exe_file_name, int* error_val
     fseek(file,strtab.sh_offset,0);
     fread(str_tab,strtab.sh_size,1,file);
     Elf64_Sym * found = find_helper(symbol_name,symtable,num,file,str_tab,error_val); // last parameter is index of strtable
+    char *section_header_string_table = (char *)malloc(shtbl[elf.e_shstrndx].sh_size);
+    Elf64_Shdr section_header_string_table_helper = shtbl[elf.e_shstrndx];
+    fseek(file,section_header_string_table_helper.sh_offset, SEEK_SET);
+    fread(section_header_string_table, section_header_string_table_helper.sh_size, 1, file);
+    Elf64_Shdr section_header[elf.e_shentsize * elf.e_shnum];
+    fseek(file, elf.e_shoff, SEEK_SET);
+    fread(section_header, elf.e_shentsize, elf.e_shnum, file);
+
     if (found == NULL)
     {
         *error_val = -1;
@@ -167,12 +242,13 @@ unsigned long find_symbol(char* symbol_name, char* exe_file_name, int* error_val
 
         if (*error_val == -4)
         {
+            unsigned long address = getRelAddress(file, section_header, &elf,section_header_string_table , symbol_name);
             fclose(file);
             free(shtbl);
             free(str_tab);
             free(symtable);
             free(shstrtab_tmp);
-            return 0;
+            return address;
         }
 
         else if (ELF64_ST_BIND(found->st_info) == GLOBAL)

@@ -12,7 +12,6 @@
 #include <sys/wait.h>
 #include <sys/user.h>
 
-
 #define RELOCATABLE_ADDRESS 0
 
 void getArgs( char **funcName,int arg, char *argv[], char **exeFileName);
@@ -87,6 +86,7 @@ void countFunctionOccurence(unsigned long funcAddr, bool Relocatable, pid_t chil
 
 
     while (WIFSTOPPED(wait_status)) {
+
         ptrace(PTRACE_GETREGS, childPid, NULL, &regs);
         if (regs.rip - 1 != funcAddr) {
 
@@ -105,6 +105,7 @@ void countFunctionOccurence(unsigned long funcAddr, bool Relocatable, pid_t chil
         waitpid(childPid,&wait_status,0);
 
         while (!isAtStackAddress(childPid, stack_address) && WIFSTOPPED(wait_status)) {
+
             removeBreakpoint( ret_address,childPid, ret_data);
             ptrace(PTRACE_SINGLESTEP, childPid, 0, 0);
             wait(&wait_status);
@@ -208,4 +209,3 @@ int main(int argc, char *argv[])
     countFunctionOccurence(addr,  err == -4,child_pid);
     return 0;
 }
-
