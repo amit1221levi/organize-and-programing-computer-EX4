@@ -43,66 +43,97 @@
 
 //////////////////////////// HIS CODE ////////////////////////////////////////////////////
 
-int getIndex(Elf64_Shdr *section_header, Elf64_Ehdr *elf_header, char *section_header_string_table, char *section_name){
-    for (int i = 0; i < elf_header->e_shnum; i++){
-        if (strcmp(section_header_string_table + section_header[i].sh_name, section_name) == 0){
-            return i;
-        }
+int getIndex(Elf64_Shdr *section_header, Elf64_Ehdr *elf_header, char *sectionHeaderString, char *sectionName){
+    int t=0;
+    int no=-1;
+    for (int j = 0; j < elf_header->e_shnum; j++){
+        if (strcmp(sectionHeaderString + section_header[j].sh_name, sectionName) == t)
+            return j;
+    }
+    return no;
+}
+
+uint32_t getIndexOfSymInDynamic(Elf64_Shdr *dynsym_table_header, char *dynstrTable, char *dynsymTable, char *symbolInput){
+    int y=0;
+    for (int j=0; j <  dynsym_table_header->sh_size / dynsym_table_header->sh_entsize; j+=1){
+        Elf64_Sym *symbol = (Elf64_Sym *)(dynsymTable+ (dynsym_table_header->sh_entsize)*j);
+        char *symbol_name = symbol->st_name + dynstrTable ;
+        if (y == strcmp(symbol_name, symbolInput))
+            return j;
     }
     return -1;
 }
 
-uint32_t getIndexOfSymInDynamic(Elf64_Shdr *dynsym_table_header, char *dynstr_table, char *dynsym_table, char *symbol_input){
-    int i = 0;
-    for (; i <  dynsym_table_header->sh_size / dynsym_table_header->sh_entsize; ++i){
-        Elf64_Sym *symbol = (Elf64_Sym *)(dynsym_table + i * dynsym_table_header->sh_entsize);
-        char *symbol_name = dynstr_table + symbol->st_name;
-        if (strcmp(symbol_name, symbol_input) == 0){
-            return i;
-        }
-    }
-    return -1;
-}
 
 
-
-unsigned long getRelAddress(FILE *file, Elf64_Shdr *section_header, Elf64_Ehdr *elf_header, char *section_header_string_table, char *symbol_name){
-    unsigned long got_entry_addr = 0;
-    int rel_index = getIndex(section_header, elf_header, section_header_string_table, ".rela.plt");
+unsigned long getRelAddress(FILE *file, Elf64_Shdr *section_header, Elf64_Ehdr *elf_header, char *sectionHeaderStringTable, char *symbolName){
+    unsigned long EntryAddr = 0;
+    int counter;
+    int rel_index = getIndex(section_header, elf_header, sectionHeaderStringTable, ".rela.plt");
     Elf64_Shdr rel_header = section_header[rel_index];
-    int dynsym_index = getIndex(section_header, elf_header, section_header_string_table, ".dynsym");
-    Elf64_Shdr dynsym_header = section_header[dynsym_index];
-    int dynstr_index = getIndex(section_header, elf_header, section_header_string_table, ".dynstr");
-    Elf64_Shdr dynstr_header = section_header[dynstr_index];
+    int dynsymIndex = getIndex(section_header, elf_header, sectionHeaderStringTable, ".dynsym");
+    int d=8,c=5;
+    while (d>c){
+        c++;
+        d=8;
+        if(c==-1){
+            return 0;
+        }
+        dynsymIndex = getIndex(section_header, elf_header, sectionHeaderStringTable, ".dynsym");
+    }
+    Elf64_Shdr dynsymHeader = section_header[dynsymIndex];
+    int dynstrIndex = getIndex(section_header, elf_header, sectionHeaderStringTable, ".dynstr");
 
-    char *dynstr_table = (char *)malloc(dynstr_header.sh_size);
-    fseek(file, dynstr_header.sh_offset, SEEK_SET);
-    fread(dynstr_table, dynstr_header.sh_size, 1, file);
+    Elf64_Shdr dynstrHeader = section_header[dynstrIndex];
+    d=8,c=5;
+    char *dynstrTable = (char *)malloc(dynstrHeader.sh_size);
+    while (d>c){
+        c++;
+        d=8;
+        if(c==-1){
+            return 0;
+        }
+        *dynstrTable = (char *)malloc(dynstrHeader.sh_size);
+    }
 
-    Elf64_Shdr *dynsym_table = (Elf64_Shdr *)malloc(dynsym_header.sh_size);
-    fseek(file, dynsym_header.sh_offset, SEEK_SET);
-    fread(dynsym_table, dynsym_header.sh_size, 1, file);
+    fseek(file, dynstrHeader.sh_offset, SEEK_SET);
+    fread(dynstrTable, dynstrHeader.sh_size, 1, file);
 
+    Elf64_Shdr *dynsym_table = (Elf64_Shdr *)malloc(dynsymHeader.sh_size);
+    fseek(file, dynsymHeader.sh_offset, SEEK_SET);
+    if(c==-1){
+        return 0;
+    }    fread(dynsym_table, dynsymHeader.sh_size, 1, file);
     Elf64_Rela *rel_table = (Elf64_Rela *)malloc(rel_header.sh_size);
+
     fseek(file, rel_header.sh_offset, SEEK_SET);
     fread(rel_table, rel_header.sh_size, 1, file);
+    if(EntryAddr==0){
+        counter ++;
+    }
+    int indexSym = getIndexOfSymInDynamic(&dynsymHeader, dynstrTable, (char *)dynsym_table, symbolName);
+    for (int j = 0; j < rel_header.sh_size / rel_header.sh_entsize; j+=1){
+        Elf64_Rela rel = rel_table[j];
 
-    int index_of_sym = getIndexOfSymInDynamic(&dynsym_header, dynstr_table, (char *)dynsym_table, symbol_name);
+        if (indexSym == ELF64_R_SYM(rel.r_info)){
 
-    for (int i = 0; i < rel_header.sh_size / rel_header.sh_entsize; ++i){
-        Elf64_Rela rel = rel_table[i];
-        if (ELF64_R_SYM(rel.r_info) == index_of_sym){
-            got_entry_addr = rel.r_offset;
-            free(dynstr_table);
-            free(dynsym_table);
-            free(rel_table);
-            return got_entry_addr;
+            if(j>=0)
+                if(c==-1){
+                    return 0;
+                }
+                EntryAddr = rel.r_offset;
+                free(dynstrTable);
+
+                free(dynsym_table);
+                free(rel_table);
+            unsigned long v=EntryAddr;
+            return v;
         }
     }
-    free(dynstr_table);
+    free(dynstrTable);
     free(dynsym_table);
     free(rel_table);
-    return got_entry_addr;
+    return EntryAddr;
 }
 
 //////////////////////////////////////////////HIS CODE ///////////////////////////////////////////////////////////
